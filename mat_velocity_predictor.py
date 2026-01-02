@@ -107,7 +107,21 @@ def get_event_id(jsessionid: str, when: int, event_id: int,
                  division_ids: int = -1, host: str = "172.16.28.210:9090"):
     return None
 
+def pretty_print_time_no_nl(time: time.struct_time):
+    if time.tm_hour < 12:
+        meridiem = "AM"
+        new_hour = time.tm_hour
+    elif time.tm_hour > 12:
+        meridiem = "PM"
+        new_hour = time.tm_hour - 12
+    elif time.tm_hour == 12:
+        meridiem = "PM"
+        
+    print(f"{new_hour:02d}:{time.tm_min} {meridiem}", end="")
+        
 def mat_velocity_predictor():
+    message = ""
+    required = False
     jsid = ""
     eId = 0
     startString = ""
@@ -116,7 +130,7 @@ def mat_velocity_predictor():
     host = "172.16.28.210:9090"
     timeout = 20
     cmd = ""
-    while (cmd != "c"):
+    while (not required):
         print(f"Fill in the required fields and review optional.\nREQUIRED:")
         print(f"  (1) jsessionid:\t{jsid}")
         print(f"  (2) event id:\t\t{eId}")
@@ -127,50 +141,63 @@ def mat_velocity_predictor():
         print(f"  (6) host:\t\t{host}")
         print(f"  (7) timeout:\t\t{timeout}ms")
             
-        cmd = (input("\n\nEnter a line # to edit, c to continue, or q to quit: "))
+        print(f"\n{message}")
+        message = ""
+        cmd = (input("Enter a line # to edit, c to continue, or q to quit: "))
         
         line_count = 13
         if cmd == 'q':
             print("Goodbye!")
             exit(1)
-
-        while(cmd != 'c' and (int(cmd) < 1 or int(cmd) > 7)):
-            delete_lines(2)
-            print("Invalid input!")
-            cmd = (input("Enter a line # to edit, c to continue, or q to quit: ")).lower()
         
         if cmd == 'c':
-            delete_lines(1)
-            continue
+            if (jsid == "" or eId == 0 or startString == "" or totalBouts == 0):
+                message = "Fill out all the required information!"
+                delete_lines(line_count)
+                continue
+            else: 
+                required = True
+                delete_lines(line_count)
+                continue
             
         match cmd:
             case '1':
                 jsid = input("jsessionid (Inspect -> Application -> Cookies -> JSESSIONID): ")
                 delete_lines(line_count + 1)
+                continue
             case '2':
                 eId = int(input("event id: "))
                 delete_lines(line_count + 1)
+                continue
             case '3':
                 startString = input("start time (HH:MM AM/PM): ")
                 while (re.match("([0-1]?[0-9]|2[0-3]):[0-5][0-9] ([AaPp][Mm])", startString) == None):
                     delete_lines(1)
                     startString = input("Invalid format! start time (HH:MM AM/PM): ")
                 delete_lines(line_count + 1)
+                continue
             case '4':
                 totalBouts = int(input("total bouts: "))
                 delete_lines(line_count + 1)
+                continue
             case '5':
                 divisionId = int(input("division id (-1 selects all): "))
                 delete_lines(line_count + 1)
+                continue
             case '6':
                 host = input("host (IP:PORT): ")
                 while(re.match(r"(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):\d{1,5}", host) == None):
                     delete_lines(1)
                     print("Invalid format! host (IP:PORT): ")
                 delete_lines(line_count + 1)
+                continue
             case '7':
                 timeout = int(input("timeout: "))
                 delete_lines(line_count + 1)
+                continue
+            
+        message = "Invalid Input!"
+        delete_lines(line_count)
 
     now = time.localtime()
     
@@ -184,24 +211,6 @@ def mat_velocity_predictor():
         now.tm_isdst,
     ))
     date_epoch = int(time.mktime(zeroed_now))
-    
-    # if args.prepare_only:
-    #     prepped = build_prepared_request(
-    #         jsessionid=jsid,
-    #         when=date_epoch,
-    #         event_id=args.event_id,
-    #         division_ids=args.division_ids,
-    #         host=args.host,
-    #     )
-    #     print("Prepared URL:", prepped.url)
-
-    #     hdrs = dict(prepped.headers)
-    #     if "Cookie" not in hdrs:
-
-    #         hdrs["Cookie"] = f"JSESSIONID={jsid}"
-    #     print("Prepared Headers:")
-    #     print(json.dumps(hdrs, indent=2))
-    #     return 0
 
     startHour = int(startString.split(":")[0])
     if startString.split(" ")[1] == "PM":
@@ -218,7 +227,10 @@ def mat_velocity_predictor():
         now.tm_isdst,
     ))
     
+    print("\n\n\n\n\n\n\n\n")
+
     while(True):
+        line_count = 10
         try:
             resp = fetch_bouts_per_hour(
                 jsessionid=jsid,
@@ -256,14 +268,6 @@ def mat_velocity_predictor():
                 "hourly_counts": sorted_counts,
             }
 
-        # for mat_num in sorted(mat_data.keys()):
-        #     info = mat_data[mat_num]
-        #     print(f"\n{info['matName']} (ID: {info['matId']}):")
-        #     print(f"  Hourly Bout Counts:")
-        #     for epoch, count in info['hourly_counts'].items():
-        #         print(f"    {epoch}: {count} bouts")
-        
-
         elapsedBouts = 0
         currentTime = time.localtime()
         tempHours = currentTime.tm_hour + (currentTime.tm_min / 60)
@@ -278,8 +282,8 @@ def mat_velocity_predictor():
         remaingBouts = totalBouts - elapsedBouts
         
         remainingTime = (remaingBouts)/averageBPH
-        # remainingHours = int(remainingTime)
-        # remainingMins = int((remainingTime - int(remainingTime)) * 60)
+        remainingHours = int(remainingTime)
+        remainingMins = int((remainingTime - int(remainingTime)) * 60)
         
         endTime = tempHours + remainingTime
         endHours = int(endTime)
@@ -297,14 +301,19 @@ def mat_velocity_predictor():
             now.tm_isdst,
         ))
         
+        delete_lines(line_count)
+        refreshTime = time.localtime()
+        print(f"\nLast refresh: {refreshTime.tm_hour:02d}:{refreshTime.tm_min:02d}:{refreshTime.tm_sec:02d}")
         print(f"Time Remain:\t{int(remainingTime)}:{int((remainingTime - int(remainingTime))* 60)}")
-        print(f"Total Bouts:\t{totalBouts}\n\
-Elapsed Bouts:\t{elapsedBouts}\n\
-Remain Bouts:\t{remaingBouts}\n\
-Average BPH:\t{averageBPH}\n\
-Remaing Time:\t{remainingTime}\n\
-Current Time:\t{currentTime.tm_hour:02d}:{currentTime.tm_min:02d}\n\
-Elapsed Time:\t{elapsedHours:02d}:{elapsedMins:02d}\n\
-End Estimate:\t{endTime.tm_hour:02d}:{endTime.tm_min:02d}\n")
+        print(f"Total Bouts:\t{totalBouts}")
+        print(f"Elapsed Bouts:\t{elapsedBouts}")
+        print(f"Remain Bouts:\t{remaingBouts}")
+        print(f"Average BPH:\t{averageBPH:04f}")
+        print(f"Elapsed Time:\t{elapsedHours:02d}:{elapsedMins:02d}")
+        print(f"Current Time:\t",end="")
+        pretty_print_time_no_nl(currentTime)
+        print(f"\nEnd Estimate:\t", end="")
+        pretty_print_time_no_nl(endTime)
+        print()
         
-        time.sleep(5)        
+        time.sleep(5)
